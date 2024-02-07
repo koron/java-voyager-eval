@@ -7,7 +7,7 @@ recall@10 が 0.997(T), 0.975(V) になってる。
 
 FP8とHNSWの合わせ技によるものか?
 [faissでの実験](https://github.com/koron/jsts-vector-eval/blob/main/pycmd/recall.py)では32バイトを4バイトに圧縮していたが、
-こちらはは8バイトで余裕がある。
+こちらは8バイトで余裕がある。
 faissを用いて同条件の8バイト、HNSWで実験すべきかもしれない。
 
 以下はfaiss 8バイトPQでの実験結果。
