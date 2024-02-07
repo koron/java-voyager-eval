@@ -3,12 +3,120 @@
  */
 package org.example;
 
+import java.util.Arrays;
+import java.util.HashSet;
+
+import com.spotify.voyager.jni.Index;
+
 public class App {
-    public String getGreeting() {
-        return "Hello World!";
+
+    public static float[][] generateVecs(int dim, int num, boolean norm) {
+        var vecs = new float[num][];
+        for (int i = 0; i < num; i++) {
+            var v = new float[dim];
+            float norm2 = 0;
+            for (int j = 0; j < dim; j++) {
+                float f = (float)Math.random() * 2 - 1;
+                v[j] = f;
+                norm2 += f * f;
+            }
+            if (norm) {
+                float norm1 = (float)Math.sqrt(norm2);
+                for (int j = 0; j < dim; j++) {
+                    v[j] /= norm1;
+                }
+            }
+            vecs[i] = v;
+        }
+        return vecs;
+    }
+
+    static final int NUM_THREADS = 4;
+
+    public static float euclidDistance(float[] v1, float[] v2) {
+        float sum = 0;
+        for (int i = 0; i < v1.length; i++) {
+            float d = v1[i] - v2[i];
+            sum += d * d;
+        }
+        return (float)Math.sqrt(sum);
+    }
+
+    static class Result {
+        int   label;
+        float dist;
+        Result(int label, float dist) {
+            this.label = label;
+            this.dist  = dist;
+        }
+    }
+
+    public static Result[] queryKNN(float[][] trainVecs, float[] query, int k) {
+        var results = new Result[trainVecs.length];
+        for (int i = 0; i < trainVecs.length; i++) {
+            float d = euclidDistance(trainVecs[i], query);
+            results[i] = new Result(i, d);
+        }
+        Arrays.sort(results, (a, b) -> {
+            var d = a.dist - b.dist;
+            return d < 0 ? -1 : d > 0 ? 1 : 0;
+        });
+        return Arrays.copyOf(results, k);
+    }
+
+    public static Result[] toResultArray(Index.QueryResults queryResult) {
+        var ds = queryResult.getDistances();
+        var ls = queryResult.getLabels();
+        var results = new Result[ds.length];
+        for (int i = 0; i < ds.length; i++) {
+            results[i] = new Result((int)ls[i], ds[i]);
+        }
+        return results;
+    }
+
+    public static int recallCount(Result[] r1, Result[] r2) {
+        var seen = new HashSet<Integer>();
+        for (var r : r1) {
+            seen.add(r.label);
+        }
+        int count = 0;
+        for (var r : r2) {
+            if (seen.contains(r.label)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public static float recall(float[][] truthVecs, Index index, float[][] queryVecs, int k) {
+        int count = 0;
+        for (int i = 0; i < queryVecs.length; i++) {
+            var q = queryVecs[i];
+            var truth = queryKNN(truthVecs, q, k);
+            var r = toResultArray(index.query(q, k));
+
+            count += recallCount(truth, r);
+        }
+        return (float)count / (float)(queryVecs.length * k);
+    }
+
+    public static void recallRandom(int dim, boolean norm, int trainNum, int validNum, int k) {
+        var trainVecs = generateVecs(dim, trainNum, norm);
+        var validVecs = generateVecs(dim, validNum, norm);
+
+        long[] ids = new long[trainNum];
+        for (int i = 0; i < trainNum; i++) {
+            ids[i] = i;
+        }
+
+        var targetIndex = new Index(Index.SpaceType.Euclidean, dim);
+        targetIndex.addItems(trainVecs, ids, NUM_THREADS);
+
+        System.out.println(String.format("train recall: %f", recall(trainVecs, targetIndex, trainVecs, k)));
+        System.out.println(String.format("train recall: %f", recall(trainVecs, targetIndex, validVecs, k)));
     }
 
     public static void main(String[] args) {
-        System.out.println(new App().getGreeting());
+        recallRandom(8, true, 10000, 20000, 10);
     }
 }
